@@ -20,13 +20,20 @@ import io
 
 app = Flask(__name__)
 
+# Налаштування CORS - дозволяємо запити з вашого сайту
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*",
+        "origins": [
+            "https://hlcuz.weblium.site",
+            "http://hlcuz.weblium.site",
+            "https://trademark-checker-rzdg.onrender.com",
+            "*"  # Дозволяємо всі домени (для тестування)
+        ],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
+        "allow_headers": ["Content-Type", "Authorization"],
         "expose_headers": ["Content-Type"],
-        "supports_credentials": True
+        "supports_credentials": True,
+        "max_age": 3600
     }
 })
 
@@ -440,8 +447,13 @@ def index():
 
 @app.route('/api/analyze', methods=['POST', 'OPTIONS'])
 def analyze_trademarks():
+    # Обробка preflight OPTIONS запиту
     if request.method == 'OPTIONS':
-        return '', 204
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response, 200
         
     try:
         data = request.json
