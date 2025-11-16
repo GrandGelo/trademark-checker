@@ -513,86 +513,131 @@ def analyze_trademarks():
 
 def analyze_single_pair(desired_tm, existing_tm, instructions):
     prompt = f"""
-    Ти - експерт з інтелектуальної власності. Проаналізуй схожість торговельних марок за наступними інструкціями:
+Ти - експерт з інтелектуальної власності. Проаналізуй схожість торговельних марок.
 
-    ІНСТРУКЦІЇ:
-    {instructions}
+БАЖАНА ДЛЯ РЕЄСТРАЦІЇ ТМ:
+- Назва: {desired_tm.get('name', '')}
+- Опис: {desired_tm.get('description', '')}
+- Класи МКТП: {desired_tm.get('classes', '')}
 
-    БАЖАНА ДЛЯ РЕЄСТРАЦІЇ ТМ:
-    - Назва: {desired_tm.get('name', '')}
-    - Опис: {desired_tm.get('description', '')}
-    - Класи МКТП: {desired_tm.get('classes', '')}
-    - Зображення: {'Є зображення' if desired_tm.get('image') else 'Немає зображення'}
+ЗАРЕЄСТРОВАНА ТМ:
+- Номер заявки: {existing_tm.get('application_number', '')}
+- Власник: {existing_tm.get('owner', '')}
+- Назва: {existing_tm.get('name', '')}
+- Класи МКТП: {existing_tm.get('classes', '')}
 
-    ЗАРЕЄСТРОВАНА ТМ:
-    - Номер заявки: {existing_tm.get('application_number', '')}
-    - Власник: {existing_tm.get('owner', '')}
-    - Назва: {existing_tm.get('name', '')}
-    - Класи МКТП: {existing_tm.get('classes', '')}
-    - Зображення: {'Є зображення' if existing_tm.get('image') else 'Немає зображення'}
+ІНСТРУКЦІЇ ДЛЯ АНАЛІЗУ:
+{instructions[:2000]}
 
-    Надай аналіз у JSON форматі:
-    {{
-        "trademark_info": {{
-            "application_number": "{existing_tm.get('application_number', '')}",
-            "owner": "{existing_tm.get('owner', '')}",
-            "name": "{existing_tm.get('name', '')}",
-            "classes": "{existing_tm.get('classes', '')}"
-        }},
-        "identical_test": {{
-            "is_identical": false,
-            "percentage": 0,
-            "details": "Детальне обгрунтування..."
-        }},
-        "similarity_analysis": {{
-            "phonetic": {{
-                "percentage": 0,
-                "details": "Аналіз звучання..."
-            }},
-            "graphic": {{
-                "percentage": 0,
-                "details": "Аналіз візуального написання..."
-            }},
-            "semantic": {{
-                "percentage": 0,
-                "details": "Аналіз значення..."
-            }},
-            "visual": {{
-                "percentage": 0,
-                "details": "Аналіз зображень..."
-            }}
-        }},
-        "goods_services_relation": {{
-            "are_related": false,
-            "details": "Аналіз спорідненості товарів/послуг..."
-        }},
-        "overall_risk": 0,
-        "confusion_likelihood": "низька/середня/висока",
-        "recommendations": ["рекомендація 1", "рекомендація 2"]
-    }}
-    """
+Надай аналіз ТІЛЬКИ у валідному JSON форматі без будь-якого іншого тексту:
+{{
+    "trademark_info": {{
+        "application_number": "{existing_tm.get('application_number', '')}",
+        "owner": "{existing_tm.get('owner', '')}",
+        "name": "{existing_tm.get('name', '')}",
+        "classes": "{existing_tm.get('classes', '')}"
+    }},
+    "identical_test": {{
+        "is_identical": false,
+        "percentage": 0,
+        "details": "Детальне обгрунтування"
+    }},
+    "similarity_analysis": {{
+        "phonetic": {{"percentage": 0, "details": "Аналіз звучання"}},
+        "graphic": {{"percentage": 0, "details": "Аналіз написання"}},
+        "semantic": {{"percentage": 0, "details": "Аналіз значення"}},
+        "visual": {{"percentage": 0, "details": "Аналіз зображень"}}
+    }},
+    "goods_services_relation": {{
+        "are_related": false,
+        "details": "Аналіз спорідненості"
+    }},
+    "overall_risk": 0,
+    "confusion_likelihood": "низька",
+    "recommendations": ["рекомендація"]
+}}
+"""
     
     try:
+        # Перевірка API ключа
+        if not openai.api_key or openai.api_key == "":
+            raise Exception("OpenAI API ключ не налаштований")
+        
         response = openai.ChatCompletion.create(
             model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "Ти експерт з торговельних марок. Відповідай ТІЛЬКИ валідним JSON без додаткового тексту."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
             temperature=0.1,
             max_tokens=2000
         )
         
-        result = json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content.strip()
+        
+        # Видалення markdown форматування якщо є
+        if content.startswith("```json"):
+            content = content.replace("```json", "").replace("```", "").strip()
+        elif content.startswith("```"):
+            content = content.replace("```", "").strip()
+        
+        # Парсинг JSON
+        result = json.loads(content)
+        
+        # Перевірка обов'язкових полів
+        if "trademark_info" not in result:
+            result["trademark_info"] = existing_tm
+        if "overall_risk" not in result:
+            result["overall_risk"] = 50
+            
         return result
         
+    except json.JSONDecodeError as e:
+        print(f"JSON Parse Error: {e}")
+        print(f"Response content: {content if 'content' in locals() else 'No content'}")
+        return create_default_result(existing_tm, f"Помилка парсингу JSON: {str(e)}")
+        
     except Exception as e:
-        return {
-            "error": str(e),
-            "trademark_info": existing_tm,
-            "overall_risk": 0,
-            "identical_test": {"is_identical": False, "percentage": 0, "details": f"Помилка аналізу: {str(e)}"},
-            "similarity_analysis": {},
-            "goods_services_relation": {"are_related": False, "details": "Помилка аналізу"},
-            "recommendations": []
-        }
+        print(f"API Error: {e}")
+        return create_default_result(existing_tm, str(e))
+
+def create_default_result(existing_tm, error_msg):
+    """Створює стандартну відповідь у випадку помилки"""
+    return {
+        "trademark_info": {
+            "application_number": existing_tm.get('application_number', ''),
+            "owner": existing_tm.get('owner', ''),
+            "name": existing_tm.get('name', ''),
+            "classes": existing_tm.get('classes', '')
+        },
+        "identical_test": {
+            "is_identical": False,
+            "percentage": 0,
+            "details": f"Помилка аналізу: {error_msg}"
+        },
+        "similarity_analysis": {
+            "phonetic": {"percentage": 0, "details": "Аналіз недоступний через помилку"},
+            "graphic": {"percentage": 0, "details": "Аналіз недоступний через помилку"},
+            "semantic": {"percentage": 0, "details": "Аналіз недоступний через помилку"},
+            "visual": {"percentage": 0, "details": "Аналіз недоступний через помилку"}
+        },
+        "goods_services_relation": {
+            "are_related": False,
+            "details": "Аналіз недоступний через помилку"
+        },
+        "overall_risk": 0,
+        "confusion_likelihood": "невідомо",
+        "recommendations": [
+            "Перевірте налаштування API",
+            f"Деталі помилки: {error_msg}"
+        ]
+    }
 
 def calculate_registration_chance(results):
     """Розраховує шанс успішної реєстрації"""
