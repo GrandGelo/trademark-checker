@@ -30,8 +30,17 @@ CORS(app, resources={
     }
 })
 
-# Ініціалізація OpenAI
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# Ініціалізація OpenAI клієнта
+try:
+    api_key = os.getenv('OPENAI_API_KEY')
+    if api_key:
+        client = OpenAI(api_key=api_key)
+    else:
+        client = None
+        print("Warning: OPENAI_API_KEY not set")
+except Exception as e:
+    print(f"Warning: OpenAI client initialization error: {e}")
+    client = None
 
 class InstructionManager:
     def __init__(self, google_doc_url):
@@ -64,11 +73,13 @@ class InstructionManager:
         except Exception as e:
             print(f"Помилка завантаження інструкцій: {e}")
             return self.cache if self.cache else {
-                'content': 'Помилка завантаження інструкцій',
+                'content': 'Використовуйте загальні принципи аналізу торговельних марок',
                 'updated': datetime.now()
             }
     
     def extract_doc_id(self, url):
+        if not url:
+            return None
         match = re.search(r'/document/d/([a-zA-Z0-9-_]+)', url)
         return match.group(1) if match else None
 
@@ -238,7 +249,6 @@ def index():
                 
                 const formData = new FormData(e.target);
                 
-                // Обробка зображення бажаної ТМ
                 let desiredImage = null;
                 const desiredImageFile = document.getElementById('desired-image').files[0];
                 if (desiredImageFile) {
@@ -255,7 +265,6 @@ def index():
                     existing_trademarks: []
                 };
                 
-                // Обробка зареєстрованих ТМ з зображеннями
                 for (let i = 1; i <= existingTMCount; i++) {
                     const name = formData.get(`existing-${i}-name`);
                     if (name) {
@@ -298,7 +307,6 @@ def index():
                 const container = document.getElementById('analysis-results');
                 let html = '<h2>📊 Результати аналізу</h2>';
                 
-                // Показуємо бажану ТМ
                 html += `
                     <div class="result-card" style="background: #f0f8ff; border-left: 5px solid #007bff;">
                         <h3>🎯 Бажана торговельна марка</h3>
@@ -317,7 +325,6 @@ def index():
                     </div>
                 `;
                 
-                // Показуємо результати по кожній зареєстрованій ТМ
                 results.results.forEach((result, index) => {
                     const riskClass = result.overall_risk > 60 ? 'risk-high' : result.overall_risk > 30 ? 'risk-medium' : 'risk-low';
                     html += `
@@ -366,7 +373,6 @@ def index():
                     `;
                 });
                 
-                // Загальний висновок
                 const chanceColor = results.overall_chance > 70 ? '#4caf50' : results.overall_chance > 40 ? '#ff9800' : '#f44336';
                 html += `
                     <div class="final-conclusion">
@@ -394,7 +400,6 @@ def index():
                     alert('Спочатку проведіть аналіз');
                     return;
                 }
-                
                 window.location.href = `/api/export/${format}/${analysisId}`;
             }
         </script>
@@ -423,10 +428,8 @@ def analyze_trademarks():
         
         overall_chance = calculate_registration_chance(results)
         
-        # Генеруємо унікальний ID для аналізу
         analysis_id = datetime.now().strftime('%Y%m%d%H%M%S')
         
-        # Зберігаємо результати
         analysis_storage[analysis_id] = {
             'desired_trademark': data['desired_trademark'],
             'results': results,
@@ -462,14 +465,12 @@ def export_report(format, analysis_id):
 def export_docx(analysis_data, analysis_id):
     doc = Document()
     
-    # Заголовок
     title = doc.add_heading('ЗВІТ ПРО АНАЛІЗ ТОРГОВЕЛЬНОЇ МАРКИ', 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     doc.add_paragraph(f"Дата аналізу: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
     doc.add_paragraph()
     
-    # Бажана ТМ
     doc.add_heading('1. БАЖАНА ДЛЯ РЕЄСТРАЦІЇ ТОРГОВЕЛЬНА МАРКА', 1)
     desired = analysis_data['desired_trademark']
     
@@ -479,7 +480,6 @@ def export_docx(analysis_data, analysis_id):
     if desired.get('classes'):
         doc.add_paragraph(f"Класи МКТП: {desired['classes']}")
     
-    # Додаємо зображення бажаної ТМ
     if desired.get('image'):
         try:
             image_data = base64.b64decode(desired['image'].split(',')[1])
@@ -490,7 +490,6 @@ def export_docx(analysis_data, analysis_id):
     
     doc.add_page_break()
     
-    # Результати порівняння
     doc.add_heading('2. РЕЗУЛЬТАТИ ПОРІВНЯННЯ З ЗАРЕЄСТРОВАНИМИ ТМ', 1)
     
     for idx, result in enumerate(analysis_data['results'], 1):
@@ -502,7 +501,6 @@ def export_docx(analysis_data, analysis_id):
         doc.add_paragraph(f"Назва: {tm_info['name']}")
         doc.add_paragraph(f"Класи МКТП: {tm_info['classes']}")
         
-        # Додаємо зображення зареєстрованої ТМ
         if tm_info.get('image'):
             try:
                 image_data = base64.b64decode(tm_info['image'].split(',')[1])
@@ -513,12 +511,10 @@ def export_docx(analysis_data, analysis_id):
         
         doc.add_paragraph()
         
-        # Ризик
         p = doc.add_paragraph()
         p.add_run(f"РИЗИК ЗМІШУВАННЯ: {result['overall_risk']}%").bold = True
         p.add_run(f" ({result['confusion_likelihood']})")
         
-        # Детальний аналіз
         if result.get('similarity_analysis'):
             doc.add_paragraph()
             doc.add_paragraph("Детальний аналіз схожості:")
@@ -537,7 +533,6 @@ def export_docx(analysis_data, analysis_id):
                     style='List Bullet'
                 )
         
-        # Рекомендації
         if result.get('recommendations'):
             doc.add_paragraph()
             doc.add_paragraph("Рекомендації:")
@@ -548,7 +543,6 @@ def export_docx(analysis_data, analysis_id):
         doc.add_paragraph('_' * 80)
         doc.add_paragraph()
     
-    # Загальний висновок
     doc.add_page_break()
     doc.add_heading('3. ЗАГАЛЬНИЙ ВИСНОВОК', 1)
     
@@ -570,7 +564,6 @@ def export_docx(analysis_data, analysis_id):
         chance_run.font.color.rgb = RGBColor(255, 0, 0)
         doc.add_paragraph("Низька ймовірність реєстрації. Рекомендується внести зміни до торговельної марки.")
     
-    # Зберігаємо у пам'ять
     doc_io = io.BytesIO()
     doc.save(doc_io)
     doc_io.seek(0)
@@ -588,7 +581,6 @@ def export_pdf(analysis_data, analysis_id):
     story = []
     styles = getSampleStyleSheet()
     
-    # Стилі
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -606,13 +598,11 @@ def export_pdf(analysis_data, analysis_id):
         spaceAfter=12
     )
     
-    # Заголовок
     story.append(Paragraph('ЗВІТ ПРО АНАЛІЗ ТОРГОВЕЛЬНОЇ МАРКИ', title_style))
     story.append(Spacer(1, 0.3*inch))
     story.append(Paragraph(f"Дата аналізу: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
     story.append(Spacer(1, 0.5*inch))
     
-    # Бажана ТМ
     story.append(Paragraph('1. БАЖАНА ДЛЯ РЕЄСТРАЦІЇ ТОРГОВЕЛЬНА МАРКА', heading_style))
     story.append(Spacer(1, 0.2*inch))
     
@@ -625,7 +615,6 @@ def export_pdf(analysis_data, analysis_id):
     
     story.append(Spacer(1, 0.2*inch))
     
-    # Додаємо зображення бажаної ТМ
     if desired.get('image'):
         try:
             image_data = base64.b64decode(desired['image'].split(',')[1])
@@ -637,7 +626,6 @@ def export_pdf(analysis_data, analysis_id):
     
     story.append(PageBreak())
     
-    # Результати порівняння
     story.append(Paragraph('2. РЕЗУЛЬТАТИ ПОРІВНЯННЯ З ЗАРЕЄСТРОВАНИМИ ТМ', heading_style))
     story.append(Spacer(1, 0.3*inch))
     
@@ -653,7 +641,6 @@ def export_pdf(analysis_data, analysis_id):
         story.append(Paragraph(f"<b>Класи МКТП:</b> {tm_info['classes']}", styles['Normal']))
         story.append(Spacer(1, 0.1*inch))
         
-        # Додаємо зображення зареєстрованої ТМ
         if tm_info.get('image'):
             try:
                 image_data = base64.b64decode(tm_info['image'].split(',')[1])
@@ -664,15 +651,13 @@ def export_pdf(analysis_data, analysis_id):
             except:
                 pass
         
-        # Ризик
         risk_color = colors.red if result['overall_risk'] > 60 else colors.orange if result['overall_risk'] > 30 else colors.green
         story.append(Paragraph(
-            f"<b><font color='#{risk_color.hexval()[2:]}'>РИЗИК ЗМІШУВАННЯ: {result['overall_risk']}%</font></b> ({result['confusion_likelihood']})",
+            f"<b>РИЗИК ЗМІШУВАННЯ: {result['overall_risk']}%</b> ({result['confusion_likelihood']})",
             styles['Normal']
         ))
         story.append(Spacer(1, 0.2*inch))
         
-        # Детальний аналіз
         if result.get('similarity_analysis'):
             story.append(Paragraph("<b>Детальний аналіз схожості:</b>", styles['Normal']))
             
@@ -692,7 +677,6 @@ def export_pdf(analysis_data, analysis_id):
         
         story.append(Spacer(1, 0.2*inch))
         
-        # Рекомендації
         if result.get('recommendations') and len(result['recommendations']) > 0:
             story.append(Paragraph("<b>Рекомендації:</b>", styles['Normal']))
             for rec in result['recommendations']:
@@ -702,7 +686,6 @@ def export_pdf(analysis_data, analysis_id):
         story.append(Paragraph('_' * 100, styles['Normal']))
         story.append(Spacer(1, 0.3*inch))
     
-    # Загальний висновок
     story.append(PageBreak())
     story.append(Paragraph('3. ЗАГАЛЬНИЙ ВИСНОВОК', heading_style))
     story.append(Spacer(1, 0.3*inch))
@@ -711,7 +694,7 @@ def export_pdf(analysis_data, analysis_id):
     
     story.append(Paragraph(
         f"Шанс успішної реєстрації торговельної марки '<b>{desired['name']}</b>': "
-        f"<b><font color='#{chance_color.hexval()[2:]}' size='16'>{analysis_data['overall_chance']}%</font></b>",
+        f"<b><font size='16'>{analysis_data['overall_chance']}%</font></b>",
         styles['Normal']
     ))
     story.append(Spacer(1, 0.2*inch))
@@ -723,7 +706,6 @@ def export_pdf(analysis_data, analysis_id):
     else:
         story.append(Paragraph("❌ <b>Низька ймовірність реєстрації.</b> Рекомендується внести зміни до торговельної марки.", styles['Normal']))
     
-    # Генеруємо PDF
     doc.build(story)
     buffer.seek(0)
     
@@ -783,10 +765,16 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
 }}"""
     
     try:
-        if not os.getenv('OPENAI_API_KEY'):
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
             raise Exception("OpenAI API ключ не налаштований")
         
-        response = client.chat.completions.create(
+        if client is None:
+            temp_client = OpenAI(api_key=api_key)
+        else:
+            temp_client = client
+            
+        response = temp_client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Ти експерт з торговельних марок. Відповідай ТІЛЬКИ валідним JSON без додаткового тексту."},
@@ -805,7 +793,6 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
         
         result = json.loads(content)
         
-        # Додаємо зображення до результату
         if existing_tm.get('image'):
             result['trademark_info']['image'] = existing_tm['image']
         
@@ -841,7 +828,6 @@ def create_default_result(existing_tm, error_msg):
         "recommendations": [f"Помилка аналізу: {error_msg}"]
     }
     
-    # Додаємо зображення якщо є
     if existing_tm.get('image'):
         result['trademark_info']['image'] = existing_tm['image']
     
