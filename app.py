@@ -10,13 +10,17 @@ from datetime import datetime, timedelta
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, PageBreak, Table, TableStyle
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from PIL import Image
 import io
+import urllib.request
 
 app = Flask(__name__)
 
@@ -618,6 +622,298 @@ def export_docx(analysis_data, analysis_id):
     )
 
 def export_pdf(analysis_data, analysis_id):
+    """Експорт звіту в PDF з підтримкою кирилиці та красивим дизайном"""
+    buffer = io.BytesIO()
+    
+    # Завантажуємо шрифт DejaVu для кирилиці
+    try:
+        # Завантажуємо DejaVu Sans з CDN
+        dejavu_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+        dejavu_bold_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf"
+        
+        # Завантажуємо шрифти
+        dejavu_data = urllib.request.urlopen(dejavu_url).read()
+        dejavu_bold_data = urllib.request.urlopen(dejavu_bold_url).read()
+        
+        # Зберігаємо тимчасово
+        with open('/tmp/DejaVuSans.ttf', 'wb') as f:
+            f.write(dejavu_data)
+        with open('/tmp/DejaVuSans-Bold.ttf', 'wb') as f:
+            f.write(dejavu_bold_data)
+        
+        # Реєструємо шрифти
+        pdfmetrics.registerFont(TTFont('DejaVu', '/tmp/DejaVuSans.ttf'))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/tmp/DejaVuSans-Bold.ttf'))
+        font_name = 'DejaVu'
+        font_bold = 'DejaVu-Bold'
+    except:
+        print("⚠️ Не вдалося завантажити DejaVu, використовуємо Helvetica")
+        font_name = 'Helvetica'
+        font_bold = 'Helvetica-Bold'
+    
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=A4,
+        topMargin=0.75*inch,
+        bottomMargin=0.75*inch,
+        leftMargin=0.75*inch,
+        rightMargin=0.75*inch
+    )
+    story = []
+    
+    # Стилі з кирилицею
+    title_style = ParagraphStyle(
+        'Title',
+        fontName=font_bold,
+        fontSize=24,
+        textColor=colors.HexColor('#1a237e'),
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        spaceBefore=10
+    )
+    
+    heading1_style = ParagraphStyle(
+        'Heading1',
+        fontName=font_bold,
+        fontSize=18,
+        textColor=colors.HexColor('#0d47a1'),
+        spaceAfter=15,
+        spaceBefore=20
+    )
+    
+    heading2_style = ParagraphStyle(
+        'Heading2',
+        fontName=font_bold,
+        fontSize=14,
+        textColor=colors.HexColor('#1565c0'),
+        spaceAfter=10,
+        spaceBefore=15
+    )
+    
+    normal_style = ParagraphStyle(
+        'Normal',
+        fontName=font_name,
+        fontSize=11,
+        leading=16,
+        spaceAfter=8
+    )
+    
+    bold_style = ParagraphStyle(
+        'Bold',
+        fontName=font_bold,
+        fontSize=11,
+        leading=16,
+        spaceAfter=8
+    )
+    
+    # Заголовок звіту
+    story.append(Paragraph('ЗВІТ ПРО АНАЛІЗ ТОРГОВЕЛЬНОЇ МАРКИ', title_style))
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Дата
+    date_text = f"Дата аналізу: {datetime.now().strftime('%d.%m.%Y о %H:%M')}"
+    story.append(Paragraph(date_text, normal_style))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Лінія-розділювач
+    story.append(Paragraph('<para alignment="center">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</para>', normal_style))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # 1. БАЖАНА ТМ
+    story.append(Paragraph('1. БАЖАНА ДЛЯ РЕЄСТРАЦІЇ ТОРГОВЕЛЬНА МАРКА', heading1_style))
+    
+    desired = analysis_data['desired_trademark']
+    
+    # Таблиця з інформацією
+    data_table = [
+        [Paragraph('<b>Назва:</b>', bold_style), Paragraph(desired['name'], normal_style)],
+        [Paragraph('<b>Опис:</b>', bold_style), Paragraph(desired.get('description') or 'Не вказано', normal_style)],
+        [Paragraph('<b>Класи МКТП:</b>', bold_style), Paragraph(desired.get('classes') or 'Не вказано', normal_style)],
+    ]
+    
+    table = Table(data_table, colWidths=[2*inch, 4.5*inch])
+    table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(table)
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Зображення бажаної ТМ
+    if desired.get('image'):
+        try:
+            image_data = base64.b64decode(desired['image'].split(',')[1])
+            image_stream = io.BytesIO(image_data)
+            img = RLImage(image_stream, width=2.5*inch, height=2.5*inch)
+            story.append(Paragraph('<para alignment="center"><b>Зображення торговельної марки:</b></para>', bold_style))
+            story.append(Spacer(1, 0.1*inch))
+            story.append(img)
+        except Exception as e:
+            print(f"Помилка додавання зображення: {e}")
+    
+    story.append(PageBreak())
+    
+    # 2. РЕЗУЛЬТАТИ ПОРІВНЯННЯ
+    story.append(Paragraph('2. РЕЗУЛЬТАТИ ПОРІВНЯННЯ З ЗАРЕЄСТРОВАНИМИ ТМ', heading1_style))
+    story.append(Spacer(1, 0.2*inch))
+    
+    for idx, result in enumerate(analysis_data['results'], 1):
+        tm_info = result['trademark_info']
+        
+        # Підзаголовок
+        story.append(Paragraph(f'2.{idx}. Торговельна марка №{tm_info.get("application_number", idx)}', heading2_style))
+        
+        # Інфо про ТМ
+        tm_data = [
+            [Paragraph('<b>Власник:</b>', bold_style), Paragraph(tm_info['owner'], normal_style)],
+            [Paragraph('<b>Назва:</b>', bold_style), Paragraph(tm_info['name'], normal_style)],
+            [Paragraph('<b>Класи МКТП:</b>', bold_style), Paragraph(tm_info['classes'], normal_style)],
+        ]
+        
+        tm_table = Table(tm_data, colWidths=[2*inch, 4.5*inch])
+        tm_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(tm_table)
+        story.append(Spacer(1, 0.15*inch))
+        
+        # Зображення зареєстрованої ТМ
+        if tm_info.get('image'):
+            try:
+                image_data = base64.b64decode(tm_info['image'].split(',')[1])
+                image_stream = io.BytesIO(image_data)
+                img = RLImage(image_stream, width=2*inch, height=2*inch)
+                story.append(img)
+                story.append(Spacer(1, 0.15*inch))
+            except:
+                pass
+        
+        # РИЗИК - у кольоровій рамці
+        risk = result['overall_risk']
+        risk_color = '#d32f2f' if risk > 60 else '#f57c00' if risk > 30 else '#388e3c'
+        
+        risk_para = Paragraph(
+            f'<para alignment="center" backColor="{risk_color}" textColor="white" '
+            f'leftIndent="10" rightIndent="10" spaceAfter="10" spaceBefore="10">'
+            f'<b>РИЗИК ЗМІШУВАННЯ: {risk}%</b> ({result.get("confusion_likelihood", "невідомо")})'
+            f'</para>',
+            bold_style
+        )
+        story.append(risk_para)
+        story.append(Spacer(1, 0.2*inch))
+        
+        # Детальний аналіз
+        story.append(Paragraph('<b>Детальний аналіз схожості:</b>', bold_style))
+        story.append(Spacer(1, 0.1*inch))
+        
+        if result.get('similarity_analysis'):
+            sim = result['similarity_analysis']
+            
+            if sim.get('phonetic'):
+                story.append(Paragraph(
+                    f'🔊 <b>Фонетична схожість: {sim["phonetic"]["percentage"]}%</b>',
+                    bold_style
+                ))
+                story.append(Paragraph(sim["phonetic"]["details"], normal_style))
+                story.append(Spacer(1, 0.1*inch))
+            
+            if sim.get('graphic'):
+                story.append(Paragraph(
+                    f'✍️ <b>Графічна схожість: {sim["graphic"]["percentage"]}%</b>',
+                    bold_style
+                ))
+                story.append(Paragraph(sim["graphic"]["details"], normal_style))
+                story.append(Spacer(1, 0.1*inch))
+            
+            if sim.get('semantic'):
+                story.append(Paragraph(
+                    f'💭 <b>Семантична схожість: {sim["semantic"]["percentage"]}%</b>',
+                    bold_style
+                ))
+                story.append(Paragraph(sim["semantic"]["details"], normal_style))
+                story.append(Spacer(1, 0.1*inch))
+            
+            if sim.get('visual'):
+                story.append(Paragraph(
+                    f'🎨 <b>Візуальна схожість: {sim["visual"]["percentage"]}%</b>',
+                    bold_style
+                ))
+                story.append(Paragraph(sim["visual"]["details"], normal_style))
+                story.append(Spacer(1, 0.1*inch))
+        
+        # Спорідненість товарів
+        if result.get('goods_services_relation'):
+            goods = result['goods_services_relation']
+            story.append(Paragraph(
+                f'📦 <b>Спорідненість товарів/послуг: {"ТАК" if goods.get("are_related") else "НІ"}</b>',
+                bold_style
+            ))
+            story.append(Paragraph(goods.get("details", ""), normal_style))
+            story.append(Spacer(1, 0.15*inch))
+        
+        # Рекомендації
+        if result.get('recommendations') and len(result['recommendations']) > 0:
+            story.append(Paragraph('<b>💡 Рекомендації:</b>', bold_style))
+            for rec in result['recommendations']:
+                story.append(Paragraph(f'• {rec}', normal_style))
+        
+        # Розділювач між ТМ
+        if idx < len(analysis_data['results']):
+            story.append(Spacer(1, 0.2*inch))
+            story.append(Paragraph('<para alignment="center">• • •</para>', normal_style))
+            story.append(Spacer(1, 0.2*inch))
+    
+    # 3. ВИСНОВОК
+    story.append(PageBreak())
+    story.append(Paragraph('3. ЗАГАЛЬНИЙ ВИСНОВОК', heading1_style))
+    story.append(Spacer(1, 0.3*inch))
+    
+    chance = analysis_data['overall_chance']
+    chance_color = '#388e3c' if chance > 70 else '#f57c00' if chance > 40 else '#d32f2f'
+    
+    story.append(Paragraph(
+        f'<para alignment="center" fontSize="20">'
+        f'Шанс успішної реєстрації торговельної марки<br/>'
+        f'<b>"{desired["name"]}"</b>:'
+        f'</para>',
+        normal_style
+    ))
+    story.append(Spacer(1, 0.2*inch))
+    
+    story.append(Paragraph(
+        f'<para alignment="center" fontSize="36" textColor="{chance_color}">'
+        f'<b>{chance}%</b>'
+        f'</para>',
+        bold_style
+    ))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Інтерпретація
+    if chance > 70:
+        interpretation = "✅ <b>Висока ймовірність успішної реєстрації.</b> Торговельна марка має хороші шанси бути зареєстрованою без конфліктів."
+    elif chance > 40:
+        interpretation = "⚠️ <b>Середня ймовірність реєстрації.</b> Рекомендується детальніше вивчити конфліктні торговельні марки та, можливо, внести незначні зміни."
+    else:
+        interpretation = "❌ <b>Низька ймовірність реєстрації.</b> Виявлено значні конфлікти. Настійно рекомендується внести суттєві зміни до торговельної марки."
+    
+    story.append(Paragraph(interpretation, normal_style))
+    
+    # Генеруємо PDF
+    doc.build(story)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'Аналіз_ТМ_{analysis_id}.pdf'
+    )
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=50, bottomMargin=50)
     story = []
