@@ -154,6 +154,9 @@ def index():
                         <label for="desired-image">Зображення торговельної марки</label>
                         <input type="file" id="desired-image" accept="image/*" onchange="previewImage(this, 'desired-preview')">
                         <div id="desired-preview" class="image-preview" style="display:none; margin-top:10px;"></div>
+                        <p style="font-size: 12px; color: #28a745; margin-top: 5px;">
+                            ✅ Зображення будуть автоматично проаналізовані за допомогою GPT-4 Vision
+                        </p>
                     </div>
                 </div>
                 
@@ -303,125 +306,97 @@ def index():
                 }
             });
             
-           function displayResults(results) {
-    const container = document.getElementById('analysis-results');
-    let html = '<h2>📊 Результати аналізу</h2>';
-    
-    html += `
-        <div class="result-card" style="background: #f0f8ff; border-left: 5px solid #007bff;">
-            <h3>🎯 Бажана торговельна марка</h3>
-            <div class="tm-images-container">
-                <div>
-                    <p><strong>Назва:</strong> ${results.desired_trademark.name}</p>
-                    <p><strong>Опис:</strong> ${results.desired_trademark.description || 'Не вказано'}</p>
-                    <p><strong>Класи МКТП:</strong> ${results.desired_trademark.classes || 'Не вказано'}</p>
-                </div>
-                ${results.desired_trademark.image ? `
-                    <div class="image-preview">
-                        <img src="${results.desired_trademark.image}" class="tm-image" alt="Бажана ТМ">
-                    </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    results.results.forEach((result, index) => {
-        const riskClass = result.overall_risk > 60 ? 'risk-high' : result.overall_risk > 30 ? 'risk-medium' : 'risk-low';
-        html += `
-            <div class="result-card ${riskClass}">
-                <h3>📄 Порівняння з ТМ №${result.trademark_info.application_number || (index + 1)}</h3>
+            function displayResults(results) {
+                const container = document.getElementById('analysis-results');
+                let html = '<h2>📊 Результати аналізу</h2>';
                 
-                <div class="tm-images-container">
-                    <div style="flex: 1;">
-                        <p><strong>Власник:</strong> ${result.trademark_info.owner || 'Не вказано'}</p>
-                        <p><strong>Назва:</strong> ${result.trademark_info.name || 'Не вказано'}</p>
-                        <p><strong>Класи МКТП:</strong> ${result.trademark_info.classes || 'Не вказано'}</p>
-                        <div class="percentage" style="margin-top: 15px;">${result.overall_risk || 0}%</div>
-                        <p>Ризик змішування: <strong>${result.confusion_likelihood || 'невідомо'}</strong></p>
-                    </div>
-                    ${result.trademark_info.image ? `
-                        <div class="image-preview">
-                            <img src="${result.trademark_info.image}" class="tm-image" alt="Зареєстрована ТМ">
-                            <p>Зареєстрована ТМ</p>
+                html += `
+                    <div class="result-card" style="background: #f0f8ff; border-left: 5px solid #007bff;">
+                        <h3>🎯 Бажана торговельна марка</h3>
+                        <div class="tm-images-container">
+                            <div>
+                                <p><strong>Назва:</strong> ${results.desired_trademark.name}</p>
+                                <p><strong>Опис:</strong> ${results.desired_trademark.description || 'Не вказано'}</p>
+                                <p><strong>Класи МКТП:</strong> ${results.desired_trademark.classes || 'Не вказано'}</p>
+                            </div>
+                            ${results.desired_trademark.image ? `
+                                <div class="image-preview">
+                                    <img src="${results.desired_trademark.image}" class="tm-image" alt="Бажана ТМ">
+                                </div>
+                            ` : ''}
                         </div>
-                    ` : ''}
-                </div>
-                
-                ${result.identical_test && result.identical_test.is_identical ? `
-                    <div style="background: #ffebee; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                        <h5>⚠️ Тест тотожності: ТОТОЖНІ (${result.identical_test.percentage}%)</h5>
-                        <p>${result.identical_test.details}</p>
                     </div>
-                ` : ''}
+                `;
                 
-                ${result.similarity_analysis && result.similarity_analysis.phonetic ? `
-                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                        <strong>🔊 Фонетична схожість:</strong> ${result.similarity_analysis.phonetic.percentage}%
-                        <p>${result.similarity_analysis.phonetic.details}</p>
-                    </div>
-                ` : ''}
+                results.results.forEach((result, index) => {
+                    const riskClass = result.overall_risk > 60 ? 'risk-high' : result.overall_risk > 30 ? 'risk-medium' : 'risk-low';
+                    html += `
+                        <div class="result-card ${riskClass}">
+                            <h3>📄 Порівняння з ТМ №${result.trademark_info.application_number || (index + 1)}</h3>
+                            
+                            <div class="tm-images-container">
+                                <div style="flex: 1;">
+                                    <p><strong>Власник:</strong> ${result.trademark_info.owner}</p>
+                                    <p><strong>Назва:</strong> ${result.trademark_info.name}</p>
+                                    <p><strong>Класи МКТП:</strong> ${result.trademark_info.classes}</p>
+                                    <div class="percentage" style="margin-top: 15px;">${result.overall_risk}%</div>
+                                    <p>Ризик змішування: <strong>${result.confusion_likelihood}</strong></p>
+                                </div>
+                                ${result.trademark_info.image ? `
+                                    <div class="image-preview">
+                                        <img src="${result.trademark_info.image}" class="tm-image" alt="Зареєстрована ТМ">
+                                        <p>Зареєстрована ТМ</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            
+                            ${result.similarity_analysis && result.similarity_analysis.phonetic ? `
+                                <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                                    <strong>🔊 Фонетична схожість:</strong> ${result.similarity_analysis.phonetic.percentage}%
+                                    <p>${result.similarity_analysis.phonetic.details}</p>
+                                </div>
+                            ` : ''}
+                            
+                            ${result.similarity_analysis && result.similarity_analysis.semantic ? `
+                                <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                                    <strong>💭 Семантична схожість:</strong> ${result.similarity_analysis.semantic.percentage}%
+                                    <p>${result.similarity_analysis.semantic.details}</p>
+                                </div>
+                            ` : ''}
+                            
+                            ${result.recommendations && result.recommendations.length > 0 ? `
+                                <div style="margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 5px;">
+                                    <strong>💡 Рекомендації:</strong>
+                                    <ul style="margin-left: 20px; margin-top: 5px;">
+                                        ${result.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
                 
-                ${result.similarity_analysis && result.similarity_analysis.graphic ? `
-                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                        <strong>✍️ Графічна схожість:</strong> ${result.similarity_analysis.graphic.percentage}%
-                        <p>${result.similarity_analysis.graphic.details}</p>
+                const chanceColor = results.overall_chance > 70 ? '#4caf50' : results.overall_chance > 40 ? '#ff9800' : '#f44336';
+                html += `
+                    <div class="final-conclusion">
+                        <h2>📋 Загальний висновок</h2>
+                        <div class="success-chance" style="color: ${chanceColor}">
+                            ✅ Шанс успішної реєстрації: ${results.overall_chance}%
+                        </div>
+                        <p style="text-align: center; margin-top: 10px;">
+                            <small>Дата аналізу: ${new Date(results.analysis_date).toLocaleString('uk-UA')}</small>
+                        </p>
                     </div>
-                ` : ''}
+                    
+                    <div class="export-buttons">
+                        <button class="btn btn-success" onclick="exportReport('docx')">📄 Завантажити DOCX</button>
+                        <button class="btn btn-success" onclick="exportReport('pdf')">📑 Завантажити PDF</button>
+                    </div>
+                `;
                 
-                ${result.similarity_analysis && result.similarity_analysis.semantic ? `
-                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                        <strong>💭 Семантична схожість:</strong> ${result.similarity_analysis.semantic.percentage}%
-                        <p>${result.similarity_analysis.semantic.details}</p>
-                    </div>
-                ` : ''}
-                
-                ${result.similarity_analysis && result.similarity_analysis.visual ? `
-                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                        <strong>🎨 Візуальна схожість:</strong> ${result.similarity_analysis.visual.percentage}%
-                        <p>${result.similarity_analysis.visual.details}</p>
-                    </div>
-                ` : ''}
-                
-                ${result.goods_services_relation ? `
-                    <div style="margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 5px;">
-                        <strong>📦 Спорідненість товарів/послуг:</strong> ${result.goods_services_relation.are_related ? 'ТАК' : 'НІ'}
-                        <p>${result.goods_services_relation.details || ''}</p>
-                    </div>
-                ` : ''}
-                
-                ${result.recommendations && result.recommendations.length > 0 ? `
-                    <div style="margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 5px;">
-                        <strong>💡 Рекомендації:</strong>
-                        <ul style="margin-left: 20px; margin-top: 5px;">
-                            ${result.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    });
-    
-    const chanceColor = results.overall_chance > 70 ? '#4caf50' : results.overall_chance > 40 ? '#ff9800' : '#f44336';
-    html += `
-        <div class="final-conclusion">
-            <h2>📋 Загальний висновок</h2>
-            <div class="success-chance" style="color: ${chanceColor}">
-                ✅ Шанс успішної реєстрації: ${results.overall_chance}%
-            </div>
-            <p style="text-align: center; margin-top: 10px;">
-                <small>Дата аналізу: ${new Date(results.analysis_date).toLocaleString('uk-UA')}</small>
-            </p>
-        </div>
-        
-        <div class="export-buttons">
-            <button class="btn btn-success" onclick="exportReport('docx')">📄 Завантажити DOCX</button>
-            <button class="btn btn-success" onclick="exportReport('pdf')">📑 Завантажити PDF</button>
-        </div>
-    `;
-    
-    container.innerHTML = html;
-    container.style.display = 'block';
-}
+                container.innerHTML = html;
+                container.style.display = 'block';
+            }
             
             function exportReport(format) {
                 if (!analysisId) {
@@ -745,51 +720,49 @@ def export_pdf(analysis_data, analysis_id):
     )
 
 def analyze_single_pair(desired_tm, existing_tm, instructions):
-    prompt = f"""Проаналізуй схожість торговельних марок за наступними критеріями.
+    """Аналізує пару торговельних марок, включаючи зображення"""
+    
+    # Базовий текстовий промпт
+    text_prompt = f"""Ти експерт з торговельних марок. Проаналізуй схожість двох марок.
 
-БАЖАНА ДЛЯ РЕЄСТРАЦІЇ:
-- Назва: {desired_tm.get('name', '')}
-- Опис: {desired_tm.get('description', '')}
-- Класи МКТП: {desired_tm.get('classes', '')}
-- Має зображення: {'Так' if desired_tm.get('image') else 'Ні'}
+БАЖАНА МАРКА: "{desired_tm.get('name', '')}" (класи: {desired_tm.get('classes', 'не вказано')})
+ЗАРЕЄСТРОВАНА МАРКА: "{existing_tm.get('name', '')}" (власник: {existing_tm.get('owner', 'не вказано')}, класи: {existing_tm.get('classes', 'не вказано')})
 
-ЗАРЕЄСТРОВАНА:
-- Номер: {existing_tm.get('application_number', '')}
-- Власник: {existing_tm.get('owner', '')}
-- Назва: {existing_tm.get('name', '')}
-- Класи МКТП: {existing_tm.get('classes', '')}
-- Має зображення: {'Так' if existing_tm.get('image') else 'Ні'}
+Проаналізуй:
+1. Чи тотожні назви марок?
+2. Фонетична схожість (як звучать)
+3. Графічна схожість (як виглядають написані)
+4. Семантична схожість (значення)
+5. Візуальна схожість зображень (якщо надано)
+6. Чи спорідненні товари/послуги?
+7. Загальний ризик змішування (0-100%)
 
-КРИТЕРІЇ АНАЛІЗУ:
-{instructions[:2000]}
-
-Відповідь ТІЛЬКИ у валідному JSON форматі без додаткового тексту:
+Відповідь ТІЛЬКИ у JSON форматі БЕЗ жодного іншого тексту:
 {{
-    "trademark_info": {{
-        "application_number": "{existing_tm.get('application_number', '')}",
-        "owner": "{existing_tm.get('owner', '')}",
-        "name": "{existing_tm.get('name', '')}",
-        "classes": "{existing_tm.get('classes', '')}",
-        "image": {"true" if existing_tm.get('image') else "false"}
-    }},
-    "identical_test": {{
-        "is_identical": false,
-        "percentage": 0,
-        "details": "Детальне обгрунтування"
-    }},
-    "similarity_analysis": {{
-        "phonetic": {{"percentage": 0, "details": "Аналіз звучання"}},
-        "graphic": {{"percentage": 0, "details": "Аналіз написання"}},
-        "semantic": {{"percentage": 0, "details": "Аналіз значення"}},
-        "visual": {{"percentage": 0, "details": "Аналіз зображень"}}
-    }},
-    "goods_services_relation": {{
-        "are_related": false,
-        "details": "Аналіз спорідненості"
-    }},
-    "overall_risk": 0,
-    "confusion_likelihood": "низька",
-    "recommendations": ["рекомендація 1", "рекомендація 2"]
+  "trademark_info": {{
+    "application_number": "{existing_tm.get('application_number', '')}",
+    "owner": "{existing_tm.get('owner', '')}",
+    "name": "{existing_tm.get('name', '')}",
+    "classes": "{existing_tm.get('classes', '')}"
+  }},
+  "identical_test": {{
+    "is_identical": false,
+    "percentage": 0,
+    "details": "Детальне обгрунтування"
+  }},
+  "similarity_analysis": {{
+    "phonetic": {{"percentage": 0, "details": "Детальний опис фонетичної схожості"}},
+    "graphic": {{"percentage": 0, "details": "Детальний опис графічної схожості"}},
+    "semantic": {{"percentage": 0, "details": "Детальний опис семантичної схожості"}},
+    "visual": {{"percentage": 0, "details": "Детальний опис візуальної схожості зображень"}}
+  }},
+  "goods_services_relation": {{
+    "are_related": false,
+    "details": "Детальний опис спорідненості"
+  }},
+  "overall_risk": 0,
+  "confusion_likelihood": "низька/середня/висока",
+  "recommendations": ["Конкретна рекомендація 1", "Конкретна рекомендація 2"]
 }}"""
     
     try:
@@ -801,35 +774,125 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
             temp_client = OpenAI(api_key=api_key)
         else:
             temp_client = client
+        
+        # Перевіряємо чи є зображення
+        has_images = desired_tm.get('image') or existing_tm.get('image')
+        
+        if has_images:
+            # Використовуємо GPT-4 Vision для аналізу зображень
+            messages_content = [
+                {
+                    "type": "text",
+                    "text": text_prompt
+                }
+            ]
             
-        response = temp_client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Ти експерт з торговельних марок. Відповідай ТІЛЬКИ валідним JSON без додаткового тексту."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=2000
-        )
+            # Додаємо зображення бажаної ТМ
+            if desired_tm.get('image'):
+                messages_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": desired_tm['image'],
+                        "detail": "high"
+                    }
+                })
+                messages_content.append({
+                    "type": "text",
+                    "text": "☝️ Це зображення БАЖАНОЇ торговельної марки"
+                })
+            
+            # Додаємо зображення зареєстрованої ТМ
+            if existing_tm.get('image'):
+                messages_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": existing_tm['image'],
+                        "detail": "high"
+                    }
+                })
+                messages_content.append({
+                    "type": "text",
+                    "text": "☝️ Це зображення ЗАРЕЄСТРОВАНОЇ торговельної марки"
+                })
+            
+            # Запит до GPT-4 Vision
+            response = temp_client.chat.completions.create(
+                model="gpt-4o",  # GPT-4o підтримує Vision
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Ти експерт з інтелектуальної власності та торговельних марок. Відповідай ТІЛЬКИ валідним JSON БЕЗ додаткового тексту."
+                    },
+                    {
+                        "role": "user",
+                        "content": messages_content
+                    }
+                ],
+                max_tokens=4000,
+                temperature=0.1
+            )
+        else:
+            # Звичайний текстовий аналіз без зображень
+            response = temp_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Ти експерт з інтелектуальної власності. Відповідай ТІЛЬКИ валідним JSON БЕЗ додаткового тексту."
+                    },
+                    {
+                        "role": "user",
+                        "content": text_prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=3000
+            )
         
         content = response.choices[0].message.content.strip()
         
-        if content.startswith("```json"):
-            content = content.replace("```json", "").replace("```", "").strip()
-        elif content.startswith("```"):
-            content = content.replace("```", "").strip()
+        # Очищення від markdown
+        content = content.replace("```json", "").replace("```", "").strip()
+        lines = content.split('\n')
+        cleaned_lines = [line for line in lines if not line.strip().startswith('//')]
+        content = '\n'.join(cleaned_lines)
+        
+        print(f"GPT Response (перші 500 символів): {content[:500]}...")
         
         result = json.loads(content)
         
+        # Додаємо зображення до результату
         if existing_tm.get('image'):
             result['trademark_info']['image'] = existing_tm['image']
         
+        # Перевірка обов'язкових полів
         if "trademark_info" not in result:
-            result["trademark_info"] = existing_tm
+            result["trademark_info"] = {
+                "application_number": existing_tm.get('application_number', ''),
+                "owner": existing_tm.get('owner', ''),
+                "name": existing_tm.get('name', ''),
+                "classes": existing_tm.get('classes', '')
+            }
+        
         if "overall_risk" not in result:
             result["overall_risk"] = 50
             
+        if "confusion_likelihood" not in result:
+            result["confusion_likelihood"] = "середня"
+            
+        if "recommendations" not in result:
+            result["recommendations"] = ["Рекомендується детальніше проаналізувати можливі конфлікти"]
+        
+        # Додаємо мітку що аналіз зображень виконано
+        if has_images and result.get('similarity_analysis', {}).get('visual'):
+            result['similarity_analysis']['visual']['analyzed_with_vision'] = True
+            
         return result
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON Parse Error: {e}")
+        print(f"Content that failed: {content if 'content' in locals() else 'No content'}")
+        return create_default_result(existing_tm, f"Помилка парсингу відповіді GPT: {str(e)}")
         
     except Exception as e:
         print(f"API Error: {e}")
@@ -843,17 +906,40 @@ def create_default_result(existing_tm, error_msg):
             "name": existing_tm.get('name', ''),
             "classes": existing_tm.get('classes', '')
         },
-        "identical_test": {"is_identical": False, "percentage": 0, "details": f"Помилка: {error_msg}"},
-        "similarity_analysis": {
-            "phonetic": {"percentage": 0, "details": "Недоступно через помилку"},
-            "graphic": {"percentage": 0, "details": "Недоступно через помилку"},
-            "semantic": {"percentage": 0, "details": "Недоступно через помилку"},
-            "visual": {"percentage": 0, "details": "Недоступно через помилку"}
+        "identical_test": {
+            "is_identical": False, 
+            "percentage": 0, 
+            "details": "Аналіз недоступний через технічну помилку"
         },
-        "goods_services_relation": {"are_related": False, "details": "Недоступно через помилку"},
+        "similarity_analysis": {
+            "phonetic": {
+                "percentage": 0, 
+                "details": "Фонетичний аналіз недоступний через технічну помилку"
+            },
+            "graphic": {
+                "percentage": 0, 
+                "details": "Графічний аналіз недоступний через технічну помилку"
+            },
+            "semantic": {
+                "percentage": 0, 
+                "details": "Семантичний аналіз недоступний через технічну помилку"
+            },
+            "visual": {
+                "percentage": 0, 
+                "details": "Візуальний аналіз зображень поки не підтримується. Для аналізу зображень зверніться до експерта."
+            }
+        },
+        "goods_services_relation": {
+            "are_related": False, 
+            "details": "Аналіз спорідненості недоступний через технічну помилку"
+        },
         "overall_risk": 0,
         "confusion_likelihood": "невідомо",
-        "recommendations": [f"Помилка аналізу: {error_msg}"]
+        "recommendations": [
+            "Сталася технічна помилка при аналізі",
+            "Рекомендується повторити спробу",
+            f"Деталі помилки: {error_msg}"
+        ]
     }
     
     if existing_tm.get('image'):
