@@ -733,7 +733,7 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
 2. Фонетична схожість (як звучать)
 3. Графічна схожість (як виглядають написані)
 4. Семантична схожість (значення)
-5. Візуальна схожість зображень (якщо надано)
+5. Візуальна схожість зображень (ЯКЩО НАДАНО ЗОБРАЖЕННЯ - опиши їх детально)
 6. Чи спорідненні товари/послуги?
 7. Загальний ризик змішування (0-100%)
 
@@ -748,20 +748,20 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
   "identical_test": {{
     "is_identical": false,
     "percentage": 0,
-    "details": "Детальне обгрунтування"
+    "details": "Детальне обгрунтування чому тотожні або різні"
   }},
   "similarity_analysis": {{
-    "phonetic": {{"percentage": 0, "details": "Детальний опис фонетичної схожості"}},
-    "graphic": {{"percentage": 0, "details": "Детальний опис графічної схожості"}},
-    "semantic": {{"percentage": 0, "details": "Детальний опис семантичної схожості"}},
-    "visual": {{"percentage": 0, "details": "Детальний опис візуальної схожості зображень"}}
+    "phonetic": {{"percentage": 0, "details": "Як звучать назви - схожості та відмінності"}},
+    "graphic": {{"percentage": 0, "details": "Як виглядають написані - шрифт, стиль"}},
+    "semantic": {{"percentage": 0, "details": "Що означають - асоціації, значення"}},
+    "visual": {{"percentage": 0, "details": "Опис візуальної схожості логотипів та зображень"}}
   }},
   "goods_services_relation": {{
     "are_related": false,
-    "details": "Детальний опис спорідненості"
+    "details": "Чи належать до одних товарів/послуг"
   }},
   "overall_risk": 0,
-  "confusion_likelihood": "низька/середня/висока",
+  "confusion_likelihood": "низька",
   "recommendations": ["Конкретна рекомендація 1", "Конкретна рекомендація 2"]
 }}"""
     
@@ -776,10 +776,11 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
             temp_client = client
         
         # Перевіряємо чи є зображення
-        has_images = desired_tm.get('image') or existing_tm.get('image')
+        has_desired_image = desired_tm.get('image')
+        has_existing_image = existing_tm.get('image')
         
-        if has_images:
-            # Використовуємо GPT-4 Vision для аналізу зображень
+        if has_desired_image or has_existing_image:
+            # Використовуємо GPT-4o Vision для аналізу зображень
             messages_content = [
                 {
                     "type": "text",
@@ -787,37 +788,38 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
                 }
             ]
             
-            # Додаємо зображення бажаної ТМ
-            if desired_tm.get('image'):
-                messages_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": desired_tm['image'],
-                        "detail": "high"
-                    }
-                })
-                messages_content.append({
-                    "type": "text",
-                    "text": "☝️ Це зображення БАЖАНОЇ торговельної марки"
-                })
+            # Додаємо зображення бажаної ТМ (якщо є)
+            if has_desired_image:
+                # Перевіряємо що це data URL
+                if desired_tm['image'].startswith('data:image'):
+                    messages_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": desired_tm['image']
+                        }
+                    })
+                    messages_content.append({
+                        "type": "text",
+                        "text": f"☝️ Це логотип/зображення БАЖАНОЇ торговельної марки '{desired_tm.get('name', '')}'. Опиши його детально."
+                    })
             
-            # Додаємо зображення зареєстрованої ТМ
-            if existing_tm.get('image'):
-                messages_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": existing_tm['image'],
-                        "detail": "high"
-                    }
-                })
-                messages_content.append({
-                    "type": "text",
-                    "text": "☝️ Це зображення ЗАРЕЄСТРОВАНОЇ торговельної марки"
-                })
+            # Додаємо зображення зареєстрованої ТМ (якщо є)
+            if has_existing_image:
+                if existing_tm['image'].startswith('data:image'):
+                    messages_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": existing_tm['image']
+                        }
+                    })
+                    messages_content.append({
+                        "type": "text",
+                        "text": f"☝️ Це логотип/зображення ЗАРЕЄСТРОВАНОЇ торговельної марки '{existing_tm.get('name', '')}'. Опиши його детально та порівняй з попереднім."
+                    })
             
-            # Запит до GPT-4 Vision
+            # Запит до GPT-4o Vision
             response = temp_client.chat.completions.create(
-                model="gpt-4o",  # GPT-4o підтримує Vision
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -857,7 +859,7 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
         cleaned_lines = [line for line in lines if not line.strip().startswith('//')]
         content = '\n'.join(cleaned_lines)
         
-        print(f"GPT Response (перші 500 символів): {content[:500]}...")
+        print(f"✅ GPT Response успішна (перші 500 символів): {content[:500]}...")
         
         result = json.loads(content)
         
@@ -874,28 +876,39 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
                 "classes": existing_tm.get('classes', '')
             }
         
+        if "similarity_analysis" not in result:
+            result["similarity_analysis"] = {
+                "phonetic": {"percentage": 0, "details": "Аналіз недоступний"},
+                "graphic": {"percentage": 0, "details": "Аналіз недоступний"},
+                "semantic": {"percentage": 0, "details": "Аналіз недоступний"},
+                "visual": {"percentage": 0, "details": "Аналіз недоступний"}
+            }
+        
         if "overall_risk" not in result:
             result["overall_risk"] = 50
             
         if "confusion_likelihood" not in result:
             result["confusion_likelihood"] = "середня"
             
-        if "recommendations" not in result:
+        if "recommendations" not in result or not result["recommendations"]:
             result["recommendations"] = ["Рекомендується детальніше проаналізувати можливі конфлікти"]
         
         # Додаємо мітку що аналіз зображень виконано
-        if has_images and result.get('similarity_analysis', {}).get('visual'):
-            result['similarity_analysis']['visual']['analyzed_with_vision'] = True
+        if (has_desired_image or has_existing_image):
+            if 'similarity_analysis' in result and 'visual' in result['similarity_analysis']:
+                result['similarity_analysis']['visual']['images_analyzed'] = True
             
         return result
         
     except json.JSONDecodeError as e:
-        print(f"JSON Parse Error: {e}")
+        print(f"❌ JSON Parse Error: {e}")
         print(f"Content that failed: {content if 'content' in locals() else 'No content'}")
-        return create_default_result(existing_tm, f"Помилка парсингу відповіді GPT: {str(e)}")
+        return create_default_result(existing_tm, f"Помилка парсингу JSON: {str(e)}")
         
     except Exception as e:
-        print(f"API Error: {e}")
+        print(f"❌ API Error: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         return create_default_result(existing_tm, str(e))
 
 def create_default_result(existing_tm, error_msg):
