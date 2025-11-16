@@ -310,6 +310,11 @@ def index():
                 const container = document.getElementById('analysis-results');
                 let html = '<h2>📊 Результати аналізу</h2>';
                 
+                // Зберігаємо analysisId глобально
+                if (results.analysis_id) {
+                    window.currentAnalysisId = results.analysis_id;
+                }
+                
                 html += `
                     <div class="result-card" style="background: #f0f8ff; border-left: 5px solid #007bff;">
                         <h3>🎯 Бажана торговельна марка</h3>
@@ -387,23 +392,45 @@ def index():
                             <small>Дата аналізу: ${new Date(results.analysis_date).toLocaleString('uk-UA')}</small>
                         </p>
                     </div>
-                    
-                    <div class="export-buttons">
-                        <button class="btn btn-success" onclick="exportReport('docx')">📄 Завантажити DOCX</button>
-                        <button class="btn btn-success" onclick="exportReport('pdf')">📑 Завантажити PDF</button>
+                `;
+                
+                // ОБОВ'ЯЗКОВО додаємо кнопки експорту
+                html += `
+                    <div class="export-buttons" style="margin: 30px 0; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="text-align: center; margin-bottom: 20px;">📥 Завантажити звіт</h3>
+                        <div style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+                            <button class="btn btn-success" onclick="exportReport('docx')" style="font-size: 16px; padding: 15px 30px;">
+                                📄 Завантажити DOCX
+                            </button>
+                            <button class="btn btn-success" onclick="exportReport('pdf')" style="font-size: 16px; padding: 15px 30px;">
+                                📑 Завантажити PDF
+                            </button>
+                        </div>
+                        <p style="text-align: center; margin-top: 15px; font-size: 14px; color: #666;">
+                            Звіт містить всі результати аналізу та зображення торговельних марок
+                        </p>
                     </div>
                 `;
                 
                 container.innerHTML = html;
                 container.style.display = 'block';
+                
+                // Логування для діагностики
+                console.log('✅ Результати відображено');
+                console.log('📊 Analysis ID:', window.currentAnalysisId);
             }
             
             function exportReport(format) {
-                if (!analysisId) {
-                    alert('Спочатку проведіть аналіз');
+                const id = window.currentAnalysisId || analysisId;
+                
+                if (!id) {
+                    alert('Помилка: ID аналізу не знайдено. Спробуйте провести аналіз ще раз.');
+                    console.error('analysisId не встановлено');
                     return;
                 }
-                window.location.href = `/api/export/${format}/${analysisId}`;
+                
+                console.log(`Експорт у ${format}, ID: ${id}`);
+                window.location.href = `/api/export/${format}/${id}`;
             }
         </script>
     </body>
@@ -722,6 +749,15 @@ def export_pdf(analysis_data, analysis_id):
 def analyze_single_pair(desired_tm, existing_tm, instructions):
     """Аналізує пару торговельних марок, включаючи зображення"""
     
+    # Діагностика зображень
+    print(f"🔍 Аналіз пари: '{desired_tm.get('name')}' vs '{existing_tm.get('name')}'")
+    print(f"📸 Бажана ТМ має зображення: {bool(desired_tm.get('image'))}")
+    print(f"📸 Зареєстрована ТМ має зображення: {bool(existing_tm.get('image'))}")
+    if desired_tm.get('image'):
+        print(f"   Розмір зображення бажаної: {len(desired_tm['image'])} символів")
+    if existing_tm.get('image'):
+        print(f"   Розмір зображення зареєстрованої: {len(existing_tm['image'])} символів")
+    
     # Базовий текстовий промпт
     text_prompt = f"""Ти експерт з торговельних марок. Проаналізуй схожість двох марок.
 
@@ -776,15 +812,20 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
             temp_client = client
         
         # Перевіряємо чи є зображення
-        has_desired_image = desired_tm.get('image')
-        has_existing_image = existing_tm.get('image')
+        has_desired_image = desired_tm.get('image') and len(str(desired_tm.get('image', ''))) > 100
+        has_existing_image = existing_tm.get('image') and len(str(existing_tm.get('image', ''))) > 100
+        
+        print(f"✅ Перевірка зображень:")
+        print(f"   Бажана ТМ: {has_desired_image}")
+        print(f"   Зареєстрована ТМ: {has_existing_image}")
         
         if has_desired_image or has_existing_image:
+            print(f"🎨 ВИКОРИСТОВУЄМО GPT-4o Vision для аналізу зображень")
             # Використовуємо GPT-4o Vision для аналізу зображень
             messages_content = [
                 {
                     "type": "text",
-                    "text": text_prompt
+                    "text": text_prompt + "\n\nУВАГА: Тобі надано зображення торговельних марок. ОБОВ'ЯЗКОВО проаналізуй їх візуальну схожість детально!"
                 }
             ]
             
