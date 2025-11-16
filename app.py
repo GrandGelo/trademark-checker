@@ -676,14 +676,3 @@ def calculate_registration_chance(results):
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-```
-
----
-
-## 📁 Файл 2: `requirements.txt`
-```
-Flask==2.3.3
-openai==1.12.0
-requests==2.31.0
-gunicorn==21.2.0
-flask-cors==4.0.0
