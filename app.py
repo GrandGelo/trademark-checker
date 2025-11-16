@@ -580,7 +580,7 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
             max_tokens=2000
         )
         
-        result = json.loads(response.choices,[object Object],message.content)
+        result = json.loads(response.choices[0].message.content)
         return result
         
     except Exception as e:
