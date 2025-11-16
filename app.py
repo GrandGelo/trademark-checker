@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS
 import openai
 import os
 import requests
@@ -7,6 +8,17 @@ import re
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
+
+# Налаштування CORS
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "expose_headers": ["Content-Type"],
+        "supports_credentials": True
+    }
+})
 
 # Налаштування OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -481,8 +493,12 @@ def index():
     """
     return render_template_string(html_code)
 
-@app.route('/api/analyze', methods=['POST'])
+@app.route('/api/analyze', methods=['POST', 'OPTIONS'])
 def analyze_trademarks():
+    # Обробка preflight запиту
+    if request.method == 'OPTIONS':
+        return '', 204
+        
     try:
         data = request.json
         
@@ -509,6 +525,7 @@ def analyze_trademarks():
         })
     
     except Exception as e:
+        print(f"Error in analyze_trademarks: {e}")
         return jsonify({'error': str(e)}), 500
 
 def analyze_single_pair(desired_tm, existing_tm, instructions):
@@ -647,7 +664,7 @@ def calculate_registration_chance(results):
     max_risk = max([result.get('overall_risk', 0) for result in results])
     
     if max_risk > 80:
-        return 10  # Дуже низький шанс
+        return 10
     elif max_risk > 60:
         return 30
     elif max_risk > 40:
@@ -655,7 +672,18 @@ def calculate_registration_chance(results):
     elif max_risk > 20:
         return 80
     else:
-        return 95  # Високий шанс
+        return 95
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+```
+
+---
+
+## 📁 Файл 2: `requirements.txt`
+```
+Flask==2.3.3
+openai==1.12.0
+requests==2.31.0
+gunicorn==21.2.0
+flask-cors==4.0.0
