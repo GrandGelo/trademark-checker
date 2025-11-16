@@ -303,97 +303,125 @@ def index():
                 }
             });
             
-            function displayResults(results) {
-                const container = document.getElementById('analysis-results');
-                let html = '<h2>📊 Результати аналізу</h2>';
-                
-                html += `
-                    <div class="result-card" style="background: #f0f8ff; border-left: 5px solid #007bff;">
-                        <h3>🎯 Бажана торговельна марка</h3>
-                        <div class="tm-images-container">
-                            <div>
-                                <p><strong>Назва:</strong> ${results.desired_trademark.name}</p>
-                                <p><strong>Опис:</strong> ${results.desired_trademark.description || 'Не вказано'}</p>
-                                <p><strong>Класи МКТП:</strong> ${results.desired_trademark.classes || 'Не вказано'}</p>
-                            </div>
-                            ${results.desired_trademark.image ? `
-                                <div class="image-preview">
-                                    <img src="${results.desired_trademark.image}" class="tm-image" alt="Бажана ТМ">
-                                </div>
-                            ` : ''}
-                        </div>
+           function displayResults(results) {
+    const container = document.getElementById('analysis-results');
+    let html = '<h2>📊 Результати аналізу</h2>';
+    
+    html += `
+        <div class="result-card" style="background: #f0f8ff; border-left: 5px solid #007bff;">
+            <h3>🎯 Бажана торговельна марка</h3>
+            <div class="tm-images-container">
+                <div>
+                    <p><strong>Назва:</strong> ${results.desired_trademark.name}</p>
+                    <p><strong>Опис:</strong> ${results.desired_trademark.description || 'Не вказано'}</p>
+                    <p><strong>Класи МКТП:</strong> ${results.desired_trademark.classes || 'Не вказано'}</p>
+                </div>
+                ${results.desired_trademark.image ? `
+                    <div class="image-preview">
+                        <img src="${results.desired_trademark.image}" class="tm-image" alt="Бажана ТМ">
                     </div>
-                `;
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    results.results.forEach((result, index) => {
+        const riskClass = result.overall_risk > 60 ? 'risk-high' : result.overall_risk > 30 ? 'risk-medium' : 'risk-low';
+        html += `
+            <div class="result-card ${riskClass}">
+                <h3>📄 Порівняння з ТМ №${result.trademark_info.application_number || (index + 1)}</h3>
                 
-                results.results.forEach((result, index) => {
-                    const riskClass = result.overall_risk > 60 ? 'risk-high' : result.overall_risk > 30 ? 'risk-medium' : 'risk-low';
-                    html += `
-                        <div class="result-card ${riskClass}">
-                            <h3>📄 Порівняння з ТМ №${result.trademark_info.application_number || (index + 1)}</h3>
-                            
-                            <div class="tm-images-container">
-                                <div style="flex: 1;">
-                                    <p><strong>Власник:</strong> ${result.trademark_info.owner}</p>
-                                    <p><strong>Назва:</strong> ${result.trademark_info.name}</p>
-                                    <p><strong>Класи МКТП:</strong> ${result.trademark_info.classes}</p>
-                                    <div class="percentage" style="margin-top: 15px;">${result.overall_risk}%</div>
-                                    <p>Ризик змішування: <strong>${result.confusion_likelihood}</strong></p>
-                                </div>
-                                ${result.trademark_info.image ? `
-                                    <div class="image-preview">
-                                        <img src="${result.trademark_info.image}" class="tm-image" alt="Зареєстрована ТМ">
-                                        <p>Зареєстрована ТМ</p>
-                                    </div>
-                                ` : ''}
-                            </div>
-                            
-                            ${result.similarity_analysis && result.similarity_analysis.phonetic ? `
-                                <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                                    <strong>🔊 Фонетична схожість:</strong> ${result.similarity_analysis.phonetic.percentage}%
-                                    <p>${result.similarity_analysis.phonetic.details}</p>
-                                </div>
-                            ` : ''}
-                            
-                            ${result.similarity_analysis && result.similarity_analysis.semantic ? `
-                                <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
-                                    <strong>💭 Семантична схожість:</strong> ${result.similarity_analysis.semantic.percentage}%
-                                    <p>${result.similarity_analysis.semantic.details}</p>
-                                </div>
-                            ` : ''}
-                            
-                            ${result.recommendations && result.recommendations.length > 0 ? `
-                                <div style="margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 5px;">
-                                    <strong>💡 Рекомендації:</strong>
-                                    <ul style="margin-left: 20px; margin-top: 5px;">
-                                        ${result.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                                    </ul>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
-                });
-                
-                const chanceColor = results.overall_chance > 70 ? '#4caf50' : results.overall_chance > 40 ? '#ff9800' : '#f44336';
-                html += `
-                    <div class="final-conclusion">
-                        <h2>📋 Загальний висновок</h2>
-                        <div class="success-chance" style="color: ${chanceColor}">
-                            ✅ Шанс успішної реєстрації: ${results.overall_chance}%
-                        </div>
-                        <p style="text-align: center; margin-top: 10px;">
-                            <small>Дата аналізу: ${new Date(results.analysis_date).toLocaleString('uk-UA')}</small>
-                        </p>
+                <div class="tm-images-container">
+                    <div style="flex: 1;">
+                        <p><strong>Власник:</strong> ${result.trademark_info.owner || 'Не вказано'}</p>
+                        <p><strong>Назва:</strong> ${result.trademark_info.name || 'Не вказано'}</p>
+                        <p><strong>Класи МКТП:</strong> ${result.trademark_info.classes || 'Не вказано'}</p>
+                        <div class="percentage" style="margin-top: 15px;">${result.overall_risk || 0}%</div>
+                        <p>Ризик змішування: <strong>${result.confusion_likelihood || 'невідомо'}</strong></p>
                     </div>
-                    
-                    <div class="export-buttons">
-                        <button class="btn btn-success" onclick="exportReport('docx')">📄 Завантажити DOCX</button>
-                        <button class="btn btn-success" onclick="exportReport('pdf')">📑 Завантажити PDF</button>
-                    </div>
-                `;
+                    ${result.trademark_info.image ? `
+                        <div class="image-preview">
+                            <img src="${result.trademark_info.image}" class="tm-image" alt="Зареєстрована ТМ">
+                            <p>Зареєстрована ТМ</p>
+                        </div>
+                    ` : ''}
+                </div>
                 
-                container.innerHTML = html;
-                container.style.display = 'block';
-            }
+                ${result.identical_test && result.identical_test.is_identical ? `
+                    <div style="background: #ffebee; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <h5>⚠️ Тест тотожності: ТОТОЖНІ (${result.identical_test.percentage}%)</h5>
+                        <p>${result.identical_test.details}</p>
+                    </div>
+                ` : ''}
+                
+                ${result.similarity_analysis && result.similarity_analysis.phonetic ? `
+                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <strong>🔊 Фонетична схожість:</strong> ${result.similarity_analysis.phonetic.percentage}%
+                        <p>${result.similarity_analysis.phonetic.details}</p>
+                    </div>
+                ` : ''}
+                
+                ${result.similarity_analysis && result.similarity_analysis.graphic ? `
+                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <strong>✍️ Графічна схожість:</strong> ${result.similarity_analysis.graphic.percentage}%
+                        <p>${result.similarity_analysis.graphic.details}</p>
+                    </div>
+                ` : ''}
+                
+                ${result.similarity_analysis && result.similarity_analysis.semantic ? `
+                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <strong>💭 Семантична схожість:</strong> ${result.similarity_analysis.semantic.percentage}%
+                        <p>${result.similarity_analysis.semantic.details}</p>
+                    </div>
+                ` : ''}
+                
+                ${result.similarity_analysis && result.similarity_analysis.visual ? `
+                    <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <strong>🎨 Візуальна схожість:</strong> ${result.similarity_analysis.visual.percentage}%
+                        <p>${result.similarity_analysis.visual.details}</p>
+                    </div>
+                ` : ''}
+                
+                ${result.goods_services_relation ? `
+                    <div style="margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                        <strong>📦 Спорідненість товарів/послуг:</strong> ${result.goods_services_relation.are_related ? 'ТАК' : 'НІ'}
+                        <p>${result.goods_services_relation.details || ''}</p>
+                    </div>
+                ` : ''}
+                
+                ${result.recommendations && result.recommendations.length > 0 ? `
+                    <div style="margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 5px;">
+                        <strong>💡 Рекомендації:</strong>
+                        <ul style="margin-left: 20px; margin-top: 5px;">
+                            ${result.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    });
+    
+    const chanceColor = results.overall_chance > 70 ? '#4caf50' : results.overall_chance > 40 ? '#ff9800' : '#f44336';
+    html += `
+        <div class="final-conclusion">
+            <h2>📋 Загальний висновок</h2>
+            <div class="success-chance" style="color: ${chanceColor}">
+                ✅ Шанс успішної реєстрації: ${results.overall_chance}%
+            </div>
+            <p style="text-align: center; margin-top: 10px;">
+                <small>Дата аналізу: ${new Date(results.analysis_date).toLocaleString('uk-UA')}</small>
+            </p>
+        </div>
+        
+        <div class="export-buttons">
+            <button class="btn btn-success" onclick="exportReport('docx')">📄 Завантажити DOCX</button>
+            <button class="btn btn-success" onclick="exportReport('pdf')">📑 Завантажити PDF</button>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
             
             function exportReport(format) {
                 if (!analysisId) {
