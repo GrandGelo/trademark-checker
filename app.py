@@ -622,7 +622,189 @@ def export_docx(analysis_data, analysis_id):
     )
 
 def export_pdf(analysis_data, analysis_id):
-    """Експорт звіту в PDF з підтримкою кирилиці та красивим дизайном"""
+    """Експорт у PDF без кирилиці (транслітерація)"""
+    buffer = io.BytesIO()
+    
+    # Функція транслітерації
+    def translit(text):
+        """Транслітерація українського тексту"""
+        ukr_to_lat = {
+            'А':'A', 'Б':'B', 'В':'V', 'Г':'H', 'Ґ':'G', 'Д':'D', 'Е':'E', 'Є':'Ye', 
+            'Ж':'Zh', 'З':'Z', 'И':'Y', 'І':'I', 'Ї':'Yi', 'Й':'Y', 'К':'K', 'Л':'L', 
+            'М':'M', 'Н':'N', 'О':'O', 'П':'P', 'Р':'R', 'С':'S', 'Т':'T', 'У':'U', 
+            'Ф':'F', 'Х':'Kh', 'Ц':'Ts', 'Ч':'Ch', 'Ш':'Sh', 'Щ':'Shch', 'Ь':'', 
+            'Ю':'Yu', 'Я':'Ya',
+            'а':'a', 'б':'b', 'в':'v', 'г':'h', 'ґ':'g', 'д':'d', 'е':'e', 'є':'ye',
+            'ж':'zh', 'з':'z', 'и':'y', 'і':'i', 'ї':'yi', 'й':'y', 'к':'k', 'л':'l',
+            'м':'m', 'н':'n', 'о':'o', 'п':'p', 'р':'r', 'с':'s', 'т':'t', 'у':'u',
+            'ф':'f', 'х':'kh', 'ц':'ts', 'ч':'ch', 'ш':'sh', 'щ':'shch', 'ь':'',
+            'ю':'yu', 'я':'ya', '₴':'UAH', '№':'#'
+        }
+        result = ''
+        for char in str(text):
+            result += ukr_to_lat.get(char, char)
+        return result
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=0.75*inch,
+        bottomMargin=0.75*inch,
+        leftMargin=0.75*inch,
+        rightMargin=0.75*inch
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Стилі
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Heading1'],
+        fontSize=22,
+        textColor=colors.HexColor('#1a237e'),
+        alignment=TA_CENTER,
+        spaceAfter=20
+    )
+    
+    heading_style = ParagraphStyle(
+        'Heading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        textColor=colors.HexColor('#0d47a1'),
+        spaceAfter=12,
+        spaceBefore=15
+    )
+    
+    # Заголовок
+    story.append(Paragraph(translit('ЗВІТ ПРО АНАЛІЗ ТОРГОВЕЛЬНОЇ МАРКИ'), title_style))
+    story.append(Spacer(1, 0.2*inch))
+    story.append(Paragraph(f"Data: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    story.append(Spacer(1, 0.3*inch))
+    story.append(Paragraph('='*60, styles['Normal']))
+    story.append(Spacer(1, 0.3*inch))
+    
+    # Бажана ТМ
+    story.append(Paragraph(translit('1. БАЖАНА ТОРГОВЕЛЬНА МАРКА'), heading_style))
+    desired = analysis_data['desired_trademark']
+    
+    story.append(Paragraph(f"<b>Nazva:</b> {translit(desired['name'])}", styles['Normal']))
+    if desired.get('description'):
+        story.append(Paragraph(f"<b>Opys:</b> {translit(desired['description'])}", styles['Normal']))
+    if desired.get('classes'):
+        story.append(Paragraph(f"<b>Klasy MKTP:</b> {desired['classes']}", styles['Normal']))
+    
+    story.append(Spacer(1, 0.2*inch))
+    
+    # Зображення
+    if desired.get('image'):
+        try:
+            image_data = base64.b64decode(desired['image'].split(',')[1])
+            image_stream = io.BytesIO(image_data)
+            img = RLImage(image_stream, width=2.5*inch, height=2.5*inch)
+            story.append(img)
+        except:
+            pass
+    
+    story.append(PageBreak())
+    
+    # Результати
+    story.append(Paragraph(translit('2. РЕЗУЛЬТАТИ ПОРІВНЯННЯ'), heading_style))
+    story.append(Spacer(1, 0.2*inch))
+    
+    for idx, result in enumerate(analysis_data['results'], 1):
+        tm_info = result['trademark_info']
+        
+        story.append(Paragraph(f'2.{idx}. TM #{tm_info.get("application_number", idx)}', heading_style))
+        story.append(Paragraph(f"<b>Vlasnyk:</b> {translit(tm_info['owner'])}", styles['Normal']))
+        story.append(Paragraph(f"<b>Nazva:</b> {translit(tm_info['name'])}", styles['Normal']))
+        story.append(Paragraph(f"<b>Klasy:</b> {tm_info['classes']}", styles['Normal']))
+        story.append(Spacer(1, 0.15*inch))
+        
+        # Зображення
+        if tm_info.get('image'):
+            try:
+                image_data = base64.b64decode(tm_info['image'].split(',')[1])
+                image_stream = io.BytesIO(image_data)
+                img = RLImage(image_stream, width=2*inch, height=2*inch)
+                story.append(img)
+                story.append(Spacer(1, 0.15*inch))
+            except:
+                pass
+        
+        # Ризик
+        risk = result['overall_risk']
+        story.append(Paragraph(
+            f'<para backColor="{"#d32f2f" if risk > 60 else "#f57c00" if risk > 30 else "#388e3c"}" textColor="white">'
+            f'<b>RYZYK: {risk}%</b> ({translit(result.get("confusion_likelihood", ""))})'
+            f'</para>',
+            styles['Normal']
+        ))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # Аналіз
+        if result.get('similarity_analysis'):
+            sim = result['similarity_analysis']
+            
+            if sim.get('phonetic'):
+                story.append(Paragraph(f'<b>Fonetychna: {sim["phonetic"]["percentage"]}%</b>', styles['Normal']))
+                story.append(Paragraph(translit(sim["phonetic"]["details"]), styles['Normal']))
+                story.append(Spacer(1, 0.1*inch))
+            
+            if sim.get('graphic'):
+                story.append(Paragraph(f'<b>Hrafichna: {sim["graphic"]["percentage"]}%</b>', styles['Normal']))
+                story.append(Paragraph(translit(sim["graphic"]["details"]), styles['Normal']))
+                story.append(Spacer(1, 0.1*inch))
+            
+            if sim.get('semantic'):
+                story.append(Paragraph(f'<b>Semantychna: {sim["semantic"]["percentage"]}%</b>', styles['Normal']))
+                story.append(Paragraph(translit(sim["semantic"]["details"]), styles['Normal']))
+                story.append(Spacer(1, 0.1*inch))
+            
+            if sim.get('visual'):
+                story.append(Paragraph(f'<b>Vizualna: {sim["visual"]["percentage"]}%</b>', styles['Normal']))
+                story.append(Paragraph(translit(sim["visual"]["details"]), styles['Normal']))
+                story.append(Spacer(1, 0.1*inch))
+        
+        # Рекомендації
+        if result.get('recommendations'):
+            story.append(Paragraph('<b>Rekomendatsii:</b>', styles['Normal']))
+            for rec in result['recommendations']:
+                story.append(Paragraph(f'- {translit(rec)}', styles['Normal']))
+        
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph('- - - - - - - -', styles['Normal']))
+        story.append(Spacer(1, 0.2*inch))
+    
+    # Висновок
+    story.append(PageBreak())
+    story.append(Paragraph(translit('3. ВИСНОВОК'), heading_style))
+    story.append(Spacer(1, 0.3*inch))
+    
+    chance = analysis_data['overall_chance']
+    story.append(Paragraph(
+        f'<para alignment="center" fontSize="18">'
+        f'Shans reyestratsiyi TM "{translit(desired["name"])}":'
+        f'</para>',
+        styles['Normal']
+    ))
+    story.append(Spacer(1, 0.2*inch))
+    
+    story.append(Paragraph(
+        f'<para alignment="center" fontSize="36" textColor="{"#388e3c" if chance > 70 else "#f57c00" if chance > 40 else "#d32f2f"}">'
+        f'<b>{chance}%</b>'
+        f'</para>',
+        styles['Normal']
+    ))
+    
+    doc.build(story)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'Analiz_TM_{analysis_id}.pdf'
+    )
     buffer = io.BytesIO()
     
     # Завантажуємо шрифт DejaVu для кирилиці
@@ -1063,26 +1245,35 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
     if existing_tm.get('image'):
         print(f"   Розмір зображення зареєстрованої: {len(existing_tm['image'])} символів")
     
-    # Спрощений та чіткий промпт
-    text_prompt = f"""Ти експерт з торговельних марок. Порівняй дві марки і дай відповідь ТІЛЬКИ у форматі JSON.
+    # Детальний промпт з інструкціями
+    text_prompt = f"""Ти експерт з торговельних марок. Проаналізуй дві марки максимально детально.
 
 МАРКА 1 (бажана): "{desired_tm.get('name', '')}"
-Класи: {desired_tm.get('classes', 'не вказано')}
+Класи МКТП: {desired_tm.get('classes', 'не вказано')}
+Опис: {desired_tm.get('description', 'не вказано')}
 
 МАРКА 2 (зареєстрована): "{existing_tm.get('name', '')}"
 Власник: {existing_tm.get('owner', 'не вказано')}
-Класи: {existing_tm.get('classes', 'не вказано')}
+Класи МКТП: {existing_tm.get('classes', 'не вказано')}
 
-Порівняй марки за такими критеріями (0-100%):
-- Фонетична схожість (звучання)
-- Графічна схожість (написання)  
-- Семантична схожість (значення)
-- Візуальна схожість (якщо є зображення - ОПИШИ їх детально)
-- Спорідненість товарів/послуг
-- Загальний ризик змішування
+=== КРИТЕРІЇ АНАЛІЗУ (ДУЖЕ ВАЖЛИВО) ===
+{instructions[:4000]}
 
-Відповідь СТРОГО у такому JSON форматі (БЕЗ ```json):
-{{"trademark_info":{{"application_number":"{existing_tm.get('application_number','')}","owner":"{existing_tm.get('owner','')}","name":"{existing_tm.get('name','')}","classes":"{existing_tm.get('classes','')}"}}, "identical_test":{{"is_identical":false,"percentage":0,"details":"Чому тотожні або різні"}}, "similarity_analysis":{{"phonetic":{{"percentage":0,"details":"Як звучать - опис"}}, "graphic":{{"percentage":0,"details":"Як написані - опис"}}, "semantic":{{"percentage":0,"details":"Що означають - опис"}}, "visual":{{"percentage":0,"details":"Як виглядають логотипи - детальний опис"}}}}, "goods_services_relation":{{"are_related":false,"details":"Чи однакові товари"}}, "overall_risk":0, "confusion_likelihood":"низька", "recommendations":["Рекомендація 1","Рекомендація 2"]}}"""
+=== ВАЖЛИВО ===
+Кожна відповідь має бути ДЕТАЛЬНОЮ (мінімум 3-5 речень).
+Використовуй КОНКРЕТНІ приклади з назв марок.
+Поясни ЧОМУ ти поставив саме такий відсоток.
+Опиши ЯК споживач може сприйняти ці марки.
+
+Якщо є ЗОБРАЖЕННЯ - детально опиши:
+- Кольори (точні назви кольорів)
+- Графічні елементи (що саме зображено)
+- Стиль (мінімалізм, корпоративний, креативний тощо)
+- Композицію (як розташовані елементи)
+- Чи можна їх переплутати візуально
+
+Відповідь у JSON форматі:
+{{"trademark_info":{{"application_number":"{existing_tm.get('application_number','')}","owner":"{existing_tm.get('owner','')}","name":"{existing_tm.get('name','')}","classes":"{existing_tm.get('classes','')}"}}, "identical_test":{{"is_identical":false,"percentage":0,"details":"Детальне обґрунтування (3-5 речень) чому марки тотожні або різні"}}, "similarity_analysis":{{"phonetic":{{"percentage":0,"details":"ДЕТАЛЬНИЙ опис (3-5 речень): які звуки співпадають, які відрізняються, як це впливає на сприйняття, чи легко переплутати при вимові"}}, "graphic":{{"percentage":0,"details":"ДЕТАЛЬНИЙ опис (3-5 речень): які літери схожі, чим відрізняється візуально, чи легко переплутати при читанні, особливості шрифту"}}, "semantic":{{"percentage":0,"details":"ДЕТАЛЬНИЙ опис (3-5 речень): що означає кожна марка, які асоціації викликає, чи є логічний звязок між значеннями, що відчує споживач"}}, "visual":{{"percentage":0,"details":"ДЕТАЛЬНИЙ опис (5-7 речень якщо є зображення): точні кольори, графічні елементи, композиція, стиль, чи можна переплутати візуально. Якщо немає зображень - напиши що аналіз не проведено"}}}}, "goods_services_relation":{{"are_related":false,"details":"ДЕТАЛЬНИЙ опис (3-5 речень): для чого використовуються товари/послуги, чи орієнтовані на одну аудиторію, чи можуть конкурувати"}}, "overall_risk":0, "confusion_likelihood":"низька/середня/висока", "recommendations":["Конкретна детальна рекомендація 1 (2-3 речення)","Конкретна детальна рекомендація 2 (2-3 речення)"]}}"""
     
     try:
         api_key = os.getenv('OPENAI_API_KEY')
@@ -1147,16 +1338,16 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
                 messages=[
                     {
                         "role": "system",
-                        "content": "Ти експерт з торговельних марок. Відповідай ВИКЛЮЧНО валідним JSON. Ніякого тексту до або після JSON. Ніяких ```json блоків. ТІЛЬКИ чистий JSON."
+                        "content": "Ти експерт з торговельних марок з 20-річним досвідом. Твої аналізи завжди ДЕТАЛЬНІ та ОБҐРУНТОВАНІ. Ти пишеш мінімум 3-5 речень для кожного критерію. Відповідай ВИКЛЮЧНО валідним JSON."
                     },
                     {
                         "role": "user",
                         "content": messages_content
                     }
                 ],
-                response_format={"type": "json_object"},  # ВАЖЛИВО: примусовий JSON
-                max_tokens=4000,
-                temperature=0.1
+                response_format={"type": "json_object"},
+                max_tokens=8000,  # Збільшено для детальних відповідей
+                temperature=0.3  # Трохи більше креативності
             )
         else:
             # Звичайний текстовий аналіз без зображень
@@ -1165,16 +1356,16 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
                 messages=[
                     {
                         "role": "system",
-                        "content": "Ти експерт з торговельних марок. Відповідай ВИКЛЮЧНО валідним JSON. Ніякого тексту до або після JSON."
+                        "content": "Ти експерт з торговельних марок з 20-річним досвідом. Твої аналізи завжди ДЕТАЛЬНІ та ОБҐРУНТОВАНІ. Ти пишеш мінімум 3-5 речень для кожного критерію. Відповідай ВИКЛЮЧНО валідним JSON."
                     },
                     {
                         "role": "user",
                         "content": text_prompt
                     }
                 ],
-                response_format={"type": "json_object"},  # ВАЖЛИВО: примусовий JSON
-                temperature=0.1,
-                max_tokens=3000
+                response_format={"type": "json_object"},
+                temperature=0.3,
+                max_tokens=8000
             )
         
         content = response.choices[0].message.content.strip()
