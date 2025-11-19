@@ -21,19 +21,24 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from PIL import Image
 import io
 import urllib.request
+import gc
 
 app = Flask(__name__)
 
-# Налаштування CORS - дозволяємо запити з вашого сайту
-CORS(app, resources={
-    r"/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "Accept"],
-        "expose_headers": ["Content-Type"],
-        "supports_credentials": False
-    }
-})
+# Налаштування CORS
+CORS(app)
+
+# Додаємо CORS заголовки до всіх відповідей
+@app.after_request
+def after_request(response):
+    # Додаємо заголовки тільки якщо їх ще немає
+    if 'Access-Control-Allow-Origin' not in response.headers:
+        response.headers['Access-Control-Allow-Origin'] = '*'
+    if 'Access-Control-Allow-Headers' not in response.headers:
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+    if 'Access-Control-Allow-Methods' not in response.headers:
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    return response
 
 # Ініціалізація OpenAI клієнта
 try:
@@ -92,6 +97,59 @@ instruction_manager = InstructionManager(os.getenv('GOOGLE_DOC_URL', ''))
 
 # Глобальне сховище для результатів аналізу
 analysis_storage = {}
+
+def compress_image_base64(base64_string, max_size_kb=100):
+    """Стискає base64 зображення до вказаного розміру"""
+    try:
+        # Видаляємо data URL prefix
+        if ',' in base64_string:
+            header, data = base64_string.split(',', 1)
+        else:
+            data = base64_string
+            header = 'data:image/jpeg;base64'
+        
+        # Декодуємо base64
+        img_data = base64.b64decode(data)
+        img = Image.open(io.BytesIO(img_data))
+        
+        # Конвертуємо в RGB якщо потрібно
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+            img = background
+        
+        # Зменшуємо розмір якщо зображення занадто велике
+        max_dimension = 800
+        if max(img.size) > max_dimension:
+            ratio = max_dimension / max(img.size)
+            new_size = tuple(int(dim * ratio) for dim in img.size)
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        
+        # Стискаємо до досягнення потрібного розміру
+        quality = 85
+        while quality > 20:
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=quality, optimize=True)
+            size_kb = len(buffer.getvalue()) / 1024
+            
+            if size_kb <= max_size_kb:
+                break
+            quality -= 5
+        
+        # Конвертуємо назад в base64
+        buffer.seek(0)
+        compressed_data = base64.b64encode(buffer.read()).decode('utf-8')
+        compressed_size_kb = len(compressed_data) / 1024
+        
+        print(f"🗜️ Стиснення: {len(data)/1024:.1f}KB → {compressed_size_kb:.1f}KB (якість: {quality})")
+        
+        return f"{header},{compressed_data}"
+    
+    except Exception as e:
+        print(f"⚠️ Помилка стиснення зображення: {e}")
+        return base64_string
 
 @app.route('/')
 def index():
@@ -447,24 +505,34 @@ def index():
 def analyze_trademarks():
     # Обробка preflight OPTIONS запиту
     if request.method == 'OPTIONS':
+        print("✅ OPTIONS request received")
         response = jsonify({'status': 'ok'})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response, 200
         
     try:
+        print("✅ POST request received")
+        print(f"📦 Content-Type: {request.content_type}")
+        print(f"📦 Origin: {request.headers.get('Origin', 'No origin')}")
+        
         data = request.json
+        print(f"📦 Data received: {len(str(data))} chars")
+        
         instructions = instruction_manager.get_instructions()
         
         results = []
-        for existing_tm in data['existing_trademarks']:
+        for i, existing_tm in enumerate(data['existing_trademarks'], 1):
+            print(f"🔄 Обробка ТМ {i}/{len(data['existing_trademarks'])}")
+            
             analysis = analyze_single_pair(
-                desired_tm=data['desired_trademark'],
+                desired_tm=data['desired_trademark'].copy(),  # Копія щоб не змінювати оригінал
                 existing_tm=existing_tm,
                 instructions=instructions['content']
             )
             results.append(analysis)
+            
+            # Звільняємо пам'ять після кожної ітерації
+            gc.collect()
+            print(f"✅ ТМ {i} оброблена, пам'ять звільнена")
         
         overall_chance = calculate_registration_chance(results)
         
@@ -477,6 +545,8 @@ def analyze_trademarks():
             'analysis_date': datetime.now().isoformat()
         }
         
+        print(f"✅ Analysis complete, ID: {analysis_id}")
+        
         return jsonify({
             'analysis_id': analysis_id,
             'desired_trademark': data['desired_trademark'],
@@ -485,7 +555,9 @@ def analyze_trademarks():
             'analysis_date': datetime.now().isoformat()
         })
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error: {e}")
+        import traceback
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/export/<format>/<analysis_id>')
@@ -1283,6 +1355,15 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
         has_desired_image = desired_tm.get('image') and len(str(desired_tm.get('image', ''))) > 100
         has_existing_image = existing_tm.get('image') and len(str(existing_tm.get('image', ''))) > 100
         
+        # Стискаємо зображення перед відправкою
+        if has_desired_image:
+            print(f"🗜️ Стискаю зображення бажаної ТМ...")
+            desired_tm['image'] = compress_image_base64(desired_tm['image'], max_size_kb=80)
+        
+        if has_existing_image:
+            print(f"🗜️ Стискаю зображення зареєстрованої ТМ...")
+            existing_tm['image'] = compress_image_base64(existing_tm['image'], max_size_kb=80)
+        
         print(f"✅ Перевірка зображень:")
         print(f"   Бажана ТМ: {has_desired_image}")
         print(f"   Зареєстрована ТМ: {has_existing_image}")
@@ -1340,8 +1421,8 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
                     }
                 ],
                 response_format={"type": "json_object"},
-                max_tokens=8000,  # Збільшено для детальних відповідей
-                temperature=0.3  # Трохи більше креативності
+                max_tokens=4000,  # Зменшено з 8000 для економії пам'яті
+                temperature=0.3
             )
         else:
             # Звичайний текстовий аналіз без зображень
@@ -1359,7 +1440,7 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.3,
-                max_tokens=8000
+                max_tokens=4000  # Зменшено для економії пам'яті
             )
         
         content = response.choices[0].message.content.strip()
@@ -1408,6 +1489,9 @@ def analyze_single_pair(desired_tm, existing_tm, instructions):
         if (has_desired_image or has_existing_image):
             if 'similarity_analysis' in result and 'visual' in result['similarity_analysis']:
                 result['similarity_analysis']['visual']['images_analyzed'] = True
+        
+        # Очищуємо пам'ять
+        gc.collect()
             
         return result
         
