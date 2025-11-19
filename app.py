@@ -26,20 +26,23 @@ app = Flask(__name__)
 
 # Налаштування CORS - дозволяємо запити з вашого сайту
 CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "https://hlcuz.weblium.site",
-            "http://hlcuz.weblium.site",
-            "https://trademark-checker-rzdg.onrender.com",
-            "*"  # Дозволяємо всі домени (для тестування)
-        ],
+    r"/*": {
+        "origins": "*",  # Дозволяємо всі домени
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
+        "allow_headers": ["Content-Type", "Authorization", "Accept"],
         "expose_headers": ["Content-Type"],
-        "supports_credentials": True,
+        "supports_credentials": False,
         "max_age": 3600
     }
 })
+
+# Додатковий обробник для OPTIONS запитів
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 
 # Ініціалізація OpenAI клієнта
 try:
@@ -98,6 +101,15 @@ instruction_manager = InstructionManager(os.getenv('GOOGLE_DOC_URL', ''))
 
 # Глобальне сховище для результатів аналізу
 analysis_storage = {}
+
+# Обробник для OPTIONS preflight запитів
+@app.route('/api/analyze', methods=['OPTIONS'])
+def handle_preflight():
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response, 200
 
 @app.route('/')
 def index():
